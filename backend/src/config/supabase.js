@@ -3,7 +3,17 @@ import { env } from './env.js';
 
 // Polyfill native WebSocket if absent (e.g. Node < 22) since auth module does not use Realtime
 if (typeof globalThis.WebSocket === 'undefined') {
-  globalThis.WebSocket = class DummyWebSocket {};
+  class DummyWebSocket {
+    constructor() {}
+    close() {}
+    send() {}
+    addEventListener() {}
+    removeEventListener() {}
+  }
+  globalThis.WebSocket = DummyWebSocket;
+  if (typeof global !== 'undefined') {
+    global.WebSocket = DummyWebSocket;
+  }
 }
 
 // Supabase client with anon key (limited privileges, for auth password verification)

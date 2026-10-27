@@ -10,6 +10,9 @@
     "test": "node src/scripts/testPhase1.js",
     "seed": "node src/scripts/seedPlatformUsers.js"
   },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "keywords": [
     "archscale",
     "auth",
