@@ -10,7 +10,7 @@ function setRefreshCookie(res, refreshToken, rememberMe = true) {
     httpOnly: true,
     secure: isProd,
     sameSite: isProd ? 'none' : 'lax', // 'none' for cross-domain Vercel/Railway, 'lax' for local/same-site
-    path: '/api/auth',
+    path: '/',
   };
 
   if (rememberMe) {
@@ -26,7 +26,7 @@ function clearRefreshCookie(res) {
     httpOnly: true,
     secure: isProd,
     sameSite: isProd ? 'none' : 'lax',
-    path: '/api/auth',
+    path: '/',
   });
 }
 
@@ -45,6 +45,7 @@ export async function loginHandler(req, res, next) {
 
     res.status(200).json({
       accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
       expiresIn: result.expiresIn,
       user: result.user,
       contexts: result.contexts,
@@ -65,6 +66,7 @@ export async function refreshHandler(req, res, next) {
 
     res.status(200).json({
       accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
       expiresIn: result.expiresIn,
     });
   } catch (err) {

@@ -11,10 +11,39 @@ export const apiClient = axios.create({
   },
 });
 
-// Access token kept securely in memory (never written to localStorage or sessionStorage)
+// Access token kept in memory
 let accessToken = null;
 let refreshPromise = null;
 let onAuthFailedCallback = null;
+
+const REFRESH_TOKEN_KEY = 'archscale_rt_fallback';
+
+export function getStoredRefreshToken() {
+  try {
+    return localStorage.getItem(REFRESH_TOKEN_KEY) || sessionStorage.getItem(REFRESH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredRefreshToken(token, remember = true) {
+  try {
+    if (token) {
+      if (remember) {
+        localStorage.setItem(REFRESH_TOKEN_KEY, token);
+        sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+      } else {
+        sessionStorage.setItem(REFRESH_TOKEN_KEY, token);
+        localStorage.removeItem(REFRESH_TOKEN_KEY);
+      }
+    } else {
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
+      sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+    }
+  } catch {
+    // Ignore storage quota/permission errors
+  }
+}
 
 export function setAccessToken(token) {
   accessToken = token;
@@ -55,6 +84,7 @@ apiClient.interceptors.response.use(
       // If session was explicitly revoked, do not attempt to refresh
       if (error.response.data?.error?.code === 'SESSION_REVOKED') {
         setAccessToken(null);
+        setStoredRefreshToken(null);
         if (onAuthFailedCallback) {
           onAuthFailedCallback();
         }
@@ -67,10 +97,11 @@ apiClient.interceptors.response.use(
         try {
           // Shared refresh lock across concurrent requests
           if (!refreshPromise) {
+            const fallbackToken = getStoredRefreshToken();
             refreshPromise = axios
               .post(
                 `${baseURL}/auth/refresh`,
-                {},
+                { refreshToken: fallbackToken },
                 {
                   withCredentials: true,
                   headers: { 'X-Requested-With': 'XMLHttpRequest' },
@@ -79,10 +110,14 @@ apiClient.interceptors.response.use(
               .then((res) => {
                 const newToken = res.data.accessToken;
                 setAccessToken(newToken);
+                if (res.data.refreshToken) {
+                  setStoredRefreshToken(res.data.refreshToken);
+                }
                 return newToken;
               })
               .catch((refreshErr) => {
                 setAccessToken(null);
+                setStoredRefreshToken(null);
                 if (onAuthFailedCallback) {
                   onAuthFailedCallback();
                 }

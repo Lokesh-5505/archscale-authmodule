@@ -226,6 +226,19 @@ class AuthService {
 
     // Verify session state in our database
     let session = await Session.findOne({ supabaseSessionId });
+    if (!session && !env.SUPABASE_URL.includes('placeholder')) {
+      try {
+        const { data: userData } = await supabaseClient.auth.getUser(newAccessToken);
+        if (userData?.user?.id) {
+          const user = await User.findOne({ supabaseUserId: userData.user.id });
+          if (user) {
+            session = await Session.findOne({ userId: user._id, revokedAt: null }).sort({ updatedAt: -1 });
+          }
+        }
+      } catch {
+        // Continue to fallback
+      }
+    }
     if (!session && env.NODE_ENV !== 'production') {
       // Fallback for dev mode
       session = await Session.findOne({ revokedAt: null }).sort({ updatedAt: -1 });

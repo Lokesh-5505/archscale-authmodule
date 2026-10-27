@@ -1,5 +1,11 @@
 import React, { createContext, useState, useEffect, useCallback } from 'react';
-import { apiClient, setAccessToken, setOnAuthFailed } from '../api/client.js';
+import {
+  apiClient,
+  setAccessToken,
+  setOnAuthFailed,
+  getStoredRefreshToken,
+  setStoredRefreshToken,
+} from '../api/client.js';
 
 export const AuthContext = createContext(null);
 
@@ -16,6 +22,7 @@ export function AuthProvider({ children }) {
       setContexts([]);
       setActiveContext(null);
       setAccessToken(null);
+      setStoredRefreshToken(null);
     });
   }, []);
 
@@ -45,23 +52,31 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  // Initial session restoration from HttpOnly cookie on page load
+  // Initial session restoration from HttpOnly cookie or fallback token on page load
   useEffect(() => {
     let isMounted = true;
 
     async function initializeAuth() {
       try {
-        const res = await apiClient.post('/auth/refresh');
+        const fallbackToken = getStoredRefreshToken();
+        const res = await apiClient.post('/auth/refresh', {
+          refreshToken: fallbackToken,
+        });
+
         if (res.data?.accessToken) {
           setAccessToken(res.data.accessToken);
+          if (res.data?.refreshToken) {
+            setStoredRefreshToken(res.data.refreshToken);
+          }
           const meData = await fetchMe();
-          if (meData?.user?.platformRole === null) {
+          if (meData?.user && !meData.user.platformRole) {
             await fetchContexts();
           }
         }
       } catch {
         // No active session cookie or expired
         setAccessToken(null);
+        setStoredRefreshToken(null);
         if (isMounted) {
           setUser(null);
         }
@@ -89,8 +104,11 @@ export function AuthProvider({ children }) {
       rememberMe,
     });
 
-    const { accessToken, user: loggedUser, contexts: userContexts } = res.data;
+    const { accessToken, refreshToken, user: loggedUser, contexts: userContexts } = res.data;
     setAccessToken(accessToken);
+    if (refreshToken) {
+      setStoredRefreshToken(refreshToken, rememberMe !== false);
+    }
     setUser(loggedUser);
     setContexts(userContexts || []);
 
@@ -118,6 +136,7 @@ export function AuthProvider({ children }) {
       // Continue client cleanup even if network request fails
     } finally {
       setAccessToken(null);
+      setStoredRefreshToken(null);
       setUser(null);
       setContexts([]);
       setActiveContext(null);
@@ -132,6 +151,7 @@ export function AuthProvider({ children }) {
       // Continue client cleanup
     } finally {
       setAccessToken(null);
+      setStoredRefreshToken(null);
       setUser(null);
       setContexts([]);
       setActiveContext(null);
