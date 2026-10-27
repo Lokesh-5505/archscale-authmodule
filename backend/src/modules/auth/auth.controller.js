@@ -57,10 +57,26 @@ export async function loginHandler(req, res, next) {
 
 export async function refreshHandler(req, res, next) {
   try {
-    const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body?.refreshToken;
+    const cookieToken = req.cookies?.[REFRESH_COOKIE_NAME];
+    const bodyToken = req.body?.refreshToken;
     const ip = getClientIp(req);
 
-    const result = await authService.refreshToken({ refreshToken, ip });
+    let result;
+    if (bodyToken) {
+      try {
+        result = await authService.refreshToken({ refreshToken: bodyToken, ip });
+      } catch (err) {
+        if (cookieToken && cookieToken !== bodyToken) {
+          result = await authService.refreshToken({ refreshToken: cookieToken, ip });
+        } else {
+          throw err;
+        }
+      }
+    } else if (cookieToken) {
+      result = await authService.refreshToken({ refreshToken: cookieToken, ip });
+    } else {
+      throw new AppError(ERROR_CODES.UNAUTHORIZED, 'Missing refresh token', 401);
+    }
 
     setRefreshCookie(res, result.refreshToken, true);
 

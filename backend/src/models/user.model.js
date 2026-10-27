@@ -49,7 +49,7 @@ const userSchema = new mongoose.Schema(
     },
     platformRole: {
       type: String,
-      enum: [PLATFORM_ROLES.SUPER_ADMIN, PLATFORM_ROLES.ADMIN, null],
+      enum: [PLATFORM_ROLES.SUPER_ADMIN, null],
       default: null,
       index: true,
     },

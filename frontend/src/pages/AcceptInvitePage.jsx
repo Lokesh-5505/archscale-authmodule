@@ -8,9 +8,12 @@ import { Alert } from '../components/Alert.jsx';
 import { apiClient } from '../api/client.js';
 
 const tenantLabels = {
-  project_owner: 'Project owner',
-  studio_owner: 'Studio owner',
-  vendor_owner: 'Vendor owner',
+  admin: 'Admin',
+  manager: 'Manager / Coordinator',
+  executive: 'Executive',
+  project_owner: 'Manager / Coordinator',
+  studio_owner: 'Admin',
+  vendor_owner: 'Executive',
 };
 
 export function AcceptInvitePage() {

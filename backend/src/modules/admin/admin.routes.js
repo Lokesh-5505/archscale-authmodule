@@ -8,6 +8,10 @@ import {
   createOrganizationHandler,
   listMembershipsHandler,
   updateMembershipHandler,
+  listAllTenantsHandler,
+  updateTenantStatusHandler,
+  listTenantSubscribersHandler,
+  updateSubscriberStatusHandler,
 } from './admin.controller.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { requireRole } from '../../middleware/requireRole.js';
@@ -71,6 +75,37 @@ router.post(
   requireRole(PLATFORM_ROLES.SUPER_ADMIN),
   validate(createOrganizationSchema),
   createOrganizationHandler
+);
+
+// Tenant Workspace Governance (Super Admin)
+router.get(
+  '/tenants',
+  requireRole(PLATFORM_ROLES.SUPER_ADMIN),
+  listAllTenantsHandler
+);
+
+router.patch(
+  '/tenants/:tenantId/status',
+  requireRole(PLATFORM_ROLES.SUPER_ADMIN),
+  updateTenantStatusHandler
+);
+
+router.get(
+  '/tenants/:tenantId/subscribers',
+  requireRole(PLATFORM_ROLES.SUPER_ADMIN),
+  listTenantSubscribersHandler
+);
+
+router.patch(
+  '/tenants/:tenantId/subscribers/:subscriberId/status',
+  requireRole(PLATFORM_ROLES.SUPER_ADMIN),
+  updateSubscriberStatusHandler
+);
+
+router.patch(
+  '/subscribers/:subscriberId/status',
+  requireRole(PLATFORM_ROLES.SUPER_ADMIN),
+  updateSubscriberStatusHandler
 );
 
 // ================= SUPER ADMIN & ADMIN PERMITTED ENDPOINTS =================

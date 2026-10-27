@@ -142,10 +142,22 @@ class AuthService {
 
     const device = parseDevice(userAgent);
 
+    // Auto-select initial activeTenantUserId from user.lastContextId or their primary active context
+    let initialActiveTenantUserId = user.lastContextId || null;
+    if (!initialActiveTenantUserId) {
+      const activeTU = await TenantUser.findOne({ userId: user._id, status: 'active' });
+      if (activeTU) {
+        initialActiveTenantUserId = activeTU._id;
+        user.lastContextId = activeTU._id;
+        await user.save();
+      }
+    }
+
     // 7. Create Session document
     const session = await Session.create({
       supabaseSessionId,
       userId: user._id,
+      activeTenantUserId: initialActiveTenantUserId,
       rememberMe,
       device,
       ip,
@@ -255,9 +267,10 @@ class AuthService {
       throw new AppError(ERROR_CODES.SESSION_EXPIRED, 'Your session has expired', 401);
     }
 
-    // Update session last active time & IP
+    // Update session last active time, IP & sync current supabaseSessionId
     session.lastActiveAt = new Date();
     session.ip = ip;
+    session.supabaseSessionId = supabaseSessionId;
     await session.save();
 
     return {
@@ -450,58 +463,104 @@ class AuthService {
         opts
       );
 
-      // 2. Create Organization
-      const orgName = organizationName || invitation.organizationName || `${fullName}'s Studio`;
-      const [organization] = await Organization.create([{ name: orgName }], opts);
+      let tenant;
+      let tenantUser;
+      let organizationId = null;
+      let membershipId = null;
 
-      // 3. Create Tenant
-      const [tenant] = await Tenant.create(
-        [
-          {
-            organizationId: organization._id,
-            tenantType: invitation.tenantType,
-          },
-        ],
-        opts
-      );
+      if (invitation.tenantId) {
+        tenant = await Tenant.findById(invitation.tenantId);
+        if (!tenant) {
+          throw new AppError(ERROR_CODES.NOT_FOUND, 'Target tenant workspace not found', 404);
+        }
+        organizationId = tenant.organizationId;
 
-      // 4. Create Membership
-      const [membership] = await Membership.create(
-        [
-          {
+        const role = invitation.role || 'executive';
+
+        // Enforce strictly one admin per tenant
+        if (role === 'admin' || role === 'owner' || role === 'studio_owner') {
+          const existingAdmin = await TenantUser.findOne({
             tenantId: tenant._id,
+            role: { $in: ['admin', 'owner', 'studio_owner'] },
             status: 'active',
-            startsAt: invitation.membershipStartsAt || new Date(),
-            endsAt: invitation.membershipEndsAt,
-            createdBy: invitation.invitedBy,
-          },
-        ],
-        opts
-      );
+          });
+          if (existingAdmin) {
+            throw new AppError(
+              ERROR_CODES.CONFLICT,
+              'This workspace already has an assigned Administrator. Each tenant can only have one Admin.',
+              409
+            );
+          }
+        }
 
-      // 5. Create TenantUser
-      const [tenantUser] = await TenantUser.create(
-        [
-          {
-            userId: user._id,
-            tenantId: tenant._id,
-            role: 'owner',
-            status: 'active',
-          },
-        ],
-        opts
-      );
+        const [createdTU] = await TenantUser.create(
+          [
+            {
+              userId: user._id,
+              tenantId: tenant._id,
+              role,
+              status: 'active',
+            },
+          ],
+          opts
+        );
+        tenantUser = createdTU;
+      } else {
+        // 2. Create Organization
+        const orgName = organizationName || invitation.organizationName || `${fullName}'s Workspace`;
+        const [organization] = await Organization.create([{ name: orgName }], opts);
+        organizationId = organization._id;
+
+        // 3. Create Tenant
+        const [createdTenant] = await Tenant.create(
+          [
+            {
+              organizationId: organization._id,
+              name: orgName,
+              tenantType: invitation.tenantType || 'admin',
+              status: 'active',
+            },
+          ],
+          opts
+        );
+        tenant = createdTenant;
+
+        // 4. Create Membership
+        const [membership] = await Membership.create(
+          [
+            {
+              tenantId: tenant._id,
+              organizationId: organization._id,
+              status: 'active',
+              startsAt: invitation.membershipStartsAt || new Date(),
+              endsAt: invitation.membershipEndsAt,
+              createdBy: invitation.invitedBy,
+            },
+          ],
+          opts
+        );
+        membershipId = membership._id;
+
+        // 5. Create TenantUser with Admin role
+        const [createdTU] = await TenantUser.create(
+          [
+            {
+              userId: user._id,
+              tenantId: tenant._id,
+              role: invitation.role || 'admin',
+              status: 'active',
+            },
+          ],
+          opts
+        );
+        tenantUser = createdTU;
+      }
 
       // Set user's lastContextId
       user.lastContextId = tenantUser._id;
       await user.save(opts);
 
-      // 6. Mark Invitation as accepted
-      invitation.status = 'accepted';
-      invitation.acceptedAt = new Date();
-      await invitation.save(opts);
-
-      // 7. Audit event
+      // 6. Audit event
       await AuthEvent.create(
         [
           {
@@ -510,14 +569,19 @@ class AuthService {
             ip,
             userAgent,
             meta: {
-              organizationId: organization._id,
+              organizationId,
               tenantId: tenant._id,
-              membershipId: membership._id,
+              membershipId,
             },
           },
         ],
         opts
       );
+
+      // 7. Mark Invitation as accepted ONLY after all records and audit events succeeded
+      invitation.status = 'accepted';
+      invitation.acceptedAt = new Date();
+      await invitation.save(opts);
 
       if (useTransaction) {
         await dbSession.commitTransaction();
@@ -535,6 +599,13 @@ class AuthService {
     } catch (err) {
       if (useTransaction) {
         await dbSession.abortTransaction().catch(() => {});
+      } else {
+        // Fallback cleanup if transactions aren't supported on standalone mongo
+        if (user?._id) await User.deleteOne({ _id: user._id }).catch(() => {});
+        if (organizationId && !invitation.tenantId) await Organization.deleteOne({ _id: organizationId }).catch(() => {});
+        if (tenant?._id && !invitation.tenantId) await Tenant.deleteOne({ _id: tenant._id }).catch(() => {});
+        if (tenantUser?._id) await TenantUser.deleteOne({ _id: tenantUser._id }).catch(() => {});
+        if (membershipId) await Membership.deleteOne({ _id: membershipId }).catch(() => {});
       }
       // Rollback Supabase user if created
       if (!env.SUPABASE_URL.includes('placeholder') && supabaseUserId) {
@@ -768,8 +839,20 @@ class AuthService {
     const session = await Session.findById(sessionId);
 
     let activeContext = null;
-    if (session?.activeTenantUserId) {
-      const tenantUser = await TenantUser.findById(session.activeTenantUserId)
+    let targetTenantUserId = session?.activeTenantUserId || user.lastContextId;
+    if (!targetTenantUserId) {
+      const activeTU = await TenantUser.findOne({ userId: user._id, status: 'active' });
+      if (activeTU) {
+        targetTenantUserId = activeTU._id;
+        if (session) {
+          session.activeTenantUserId = activeTU._id;
+          await session.save();
+        }
+      }
+    }
+
+    if (targetTenantUserId) {
+      const tenantUser = await TenantUser.findById(targetTenantUserId)
         .populate({
           path: 'tenantId',
           populate: { path: 'organizationId' },
@@ -778,16 +861,25 @@ class AuthService {
 
       if (tenantUser?.tenantId) {
         const membership = await Membership.findOne({ tenantId: tenantUser.tenantId._id }).lean();
+        let normalizedRole = tenantUser.role || 'executive';
+        if (normalizedRole === 'owner' || normalizedRole === 'studio_owner') normalizedRole = 'admin';
+        if (normalizedRole === 'project_owner') normalizedRole = 'manager';
+        if (normalizedRole === 'vendor_owner' || normalizedRole === 'member') normalizedRole = 'executive';
+
         activeContext = {
           tenantUserId: tenantUser._id,
-          role: tenantUser.role,
-          tenantType: tenantUser.tenantId.tenantType,
-          organizationName: tenantUser.tenantId.organizationId?.name || '',
+          tenantId: tenantUser.tenantId._id,
+          role: normalizedRole,
+          rawRole: tenantUser.role,
+          tenantType: tenantUser.tenantId.tenantType || normalizedRole,
+          tenantStatus: tenantUser.tenantId.status,
+          subscriberStatus: tenantUser.status,
+          organizationName: tenantUser.tenantId.organizationId?.name || tenantUser.tenantId.name || '',
           membershipActive: membership
             ? membership.status === 'active' &&
               new Date(membership.startsAt) <= new Date() &&
               new Date() <= new Date(membership.endsAt)
-            : false,
+            : true,
         };
       }
     }
@@ -813,7 +905,7 @@ class AuthService {
     const user = await User.findById(userId);
     if (!user) return [];
 
-    const tenantUsers = await TenantUser.find({ userId, status: 'active' })
+    const tenantUsers = await TenantUser.find({ userId })
       .populate({
         path: 'tenantId',
         populate: { path: 'organizationId' },
@@ -821,31 +913,45 @@ class AuthService {
       .lean();
 
     const contexts = [];
+    const now = new Date();
+
     for (const tu of tenantUsers) {
       if (!tu.tenantId) continue;
 
       const membership = await Membership.findOne({ tenantId: tu.tenantId._id }).lean();
-      const now = new Date();
-      const isActive = membership
+      const isTenantActive = tu.tenantId.status === 'active';
+      const isSubscriberActive = tu.status === 'active';
+      const isMembershipValid = membership
         ? membership.status === 'active' &&
           new Date(membership.startsAt) <= now &&
           now <= new Date(membership.endsAt)
-        : false;
+        : true;
+
+      const isActive = isTenantActive && isSubscriberActive && isMembershipValid;
 
       const isLastUsed = user.lastContextId
         ? user.lastContextId.toString() === tu._id.toString()
         : false;
 
+      // Normalize role
+      let normalizedRole = tu.role || 'executive';
+      if (normalizedRole === 'owner' || normalizedRole === 'studio_owner') normalizedRole = 'admin';
+      if (normalizedRole === 'project_owner') normalizedRole = 'manager';
+      if (normalizedRole === 'vendor_owner' || normalizedRole === 'member') normalizedRole = 'executive';
+
       contexts.push({
         tenantUserId: tu._id,
         tenantId: tu.tenantId._id,
-        tenantType: tu.tenantId.tenantType,
-        organizationName: tu.tenantId.organizationId?.name || 'ArchScale Organization',
-        role: tu.role,
+        tenantType: tu.tenantId.tenantType || normalizedRole,
+        organizationName: tu.tenantId.organizationId?.name || tu.tenantId.name || 'ArchScale Organization',
+        role: normalizedRole,
+        rawRole: tu.role,
+        subscriberStatus: tu.status,
+        tenantStatus: tu.tenantId.status,
         isLastUsed,
         isActive,
         membershipEndsAt: membership?.endsAt || null,
-        membershipStatus: membership?.status || 'suspended',
+        membershipStatus: membership?.status || (isTenantActive ? 'active' : 'suspended'),
       });
     }
 
@@ -859,7 +965,6 @@ class AuthService {
     const tenantUser = await TenantUser.findOne({
       _id: tenantUserId,
       userId,
-      status: 'active',
     }).populate('tenantId');
 
     if (!tenantUser) {
@@ -870,9 +975,25 @@ class AuthService {
       );
     }
 
+    if (tenantUser.status !== 'active') {
+      throw new AppError(
+        ERROR_CODES.SUBSCRIBER_INACTIVE,
+        'Your access to this workspace is currently inactive. Contact your administrator.',
+        403
+      );
+    }
+
+    if (tenantUser.tenantId?.status === 'deactivated' || tenantUser.tenantId?.status === 'suspended') {
+      throw new AppError(
+        ERROR_CODES.TENANT_DEACTIVATED,
+        'This workspace has been deactivated by the platform administrator.',
+        403
+      );
+    }
+
     // Verify membership is active
     const membership = await Membership.findOne({ tenantId: tenantUser.tenantId._id });
-    if (!membership || !membership.isActive()) {
+    if (membership && !membership.isActive()) {
       throw new AppError(
         ERROR_CODES.MEMBERSHIP_INACTIVE,
         'This organization membership access period has concluded. Contact ArchScale.',

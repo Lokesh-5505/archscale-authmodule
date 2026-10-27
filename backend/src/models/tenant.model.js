@@ -17,14 +17,26 @@ const tenantSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['active', 'suspended', 'expired'],
+      enum: ['active', 'deactivated', 'suspended', 'expired'],
       default: 'active',
       index: true,
     },
+    deactivatedAt: {
+      type: Date,
+      default: null,
+    },
+    deactivatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    statusReason: {
+      type: String,
+      default: '',
+    },
     tenantType: {
       type: String,
-      enum: Object.values(TENANT_TYPES),
-      default: TENANT_TYPES.STUDIO_OWNER,
+      default: 'admin',
       index: true,
     },
   },

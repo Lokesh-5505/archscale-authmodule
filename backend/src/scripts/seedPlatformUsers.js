@@ -111,15 +111,7 @@ async function runSeed() {
       defaultUserId: 'superadmin',
     });
 
-    // 2. Admin
-    await seedUser({
-      email: env.SEED_ADMIN_EMAIL,
-      role: PLATFORM_ROLES.ADMIN,
-      fullName: 'ArchScale Admin',
-      defaultUserId: 'admin',
-    });
-
-    console.log('\n🎉 Platform user seeding complete.\n');
+    console.log('\n🎉 Super Admin seeding complete.\n');
   } catch (err) {
     console.error('❌ Error during seeding:', err);
     process.exit(1);

@@ -33,19 +33,58 @@ export const SECURITY_RULES = {
 
 export const PLATFORM_ROLES = {
   SUPER_ADMIN: 'super_admin',
+};
+
+export const SUBSCRIBER_ROLES = {
   ADMIN: 'admin',
+  MANAGER: 'manager',
+  EXECUTIVE: 'executive',
+  // Backward compatibility aliases
+  STUDIO_OWNER: 'studio_owner',
+  PROJECT_OWNER: 'project_owner',
+  VENDOR_OWNER: 'vendor_owner',
+  OWNER: 'owner',
+  MEMBER: 'member',
+};
+
+export const SUBSCRIBER_LABELS = {
+  admin: 'Admin',
+  manager: 'Manager / Coordinator',
+  executive: 'Executive',
+  studio_owner: 'Admin',
+  project_owner: 'Manager / Coordinator',
+  vendor_owner: 'Executive',
+  owner: 'Admin',
+  member: 'Executive',
+};
+
+export const TENANT_STATUSES = {
+  ACTIVE: 'active',
+  DEACTIVATED: 'deactivated',
+  SUSPENDED: 'suspended',
+};
+
+export const SUBSCRIBER_STATUSES = {
+  ACTIVE: 'active',
+  INACTIVE: 'inactive',
 };
 
 export const TENANT_TYPES = {
+  ADMIN: 'admin',
+  MANAGER: 'manager',
+  EXECUTIVE: 'executive',
   PROJECT_OWNER: 'project_owner',
   STUDIO_OWNER: 'studio_owner',
   VENDOR_OWNER: 'vendor_owner',
 };
 
 export const TENANT_LABELS = {
-  [TENANT_TYPES.PROJECT_OWNER]: 'Project owner',
-  [TENANT_TYPES.STUDIO_OWNER]: 'Studio owner',
-  [TENANT_TYPES.VENDOR_OWNER]: 'Vendor owner',
+  admin: 'Admin',
+  manager: 'Manager / Coordinator',
+  executive: 'Executive',
+  [TENANT_TYPES.PROJECT_OWNER]: 'Manager / Coordinator',
+  [TENANT_TYPES.STUDIO_OWNER]: 'Admin',
+  [TENANT_TYPES.VENDOR_OWNER]: 'Executive',
 };
 
 export const ERROR_CODES = {
@@ -56,6 +95,8 @@ export const ERROR_CODES = {
   SESSION_REVOKED: 'SESSION_REVOKED',
   SESSION_EXPIRED: 'SESSION_EXPIRED',
   MEMBERSHIP_INACTIVE: 'MEMBERSHIP_INACTIVE',
+  TENANT_DEACTIVATED: 'TENANT_DEACTIVATED',
+  SUBSCRIBER_INACTIVE: 'SUBSCRIBER_INACTIVE',
   FORBIDDEN: 'FORBIDDEN',
   UNAUTHORIZED: 'UNAUTHORIZED',
   VALIDATION_FAILED: 'VALIDATION_FAILED',

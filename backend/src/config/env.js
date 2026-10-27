@@ -1,6 +1,12 @@
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { z } from 'zod';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config();
 
 const envSchema = z.object({
@@ -23,7 +29,6 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional().default(''),
   SMTP_PASS: z.string().optional().default(''),
   SEED_SUPER_ADMIN_EMAIL: z.string().email().default('superadmin@archscale.in'),
-  SEED_ADMIN_EMAIL: z.string().email().default('admin@archscale.in'),
 });
 
 const parsed = envSchema.safeParse(process.env);

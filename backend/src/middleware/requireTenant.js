@@ -8,12 +8,46 @@ export async function requireTenant(req, res, next) {
       throw new AppError(ERROR_CODES.UNAUTHORIZED, 'Authentication required', 401);
     }
 
-    // Super admin and admin bypass tenant membership checks
-    if (req.auth.platformRole === 'super_admin' || req.auth.platformRole === 'admin') {
+    // Super admin bypasses tenant membership checks
+    if (req.auth.platformRole === 'super_admin') {
       return next();
     }
 
-    const activeTenantUserId = req.auth.activeTenantUserId;
+    let activeTenantUserId = req.auth.activeTenantUserId;
+    if (!activeTenantUserId) {
+      // Auto-fallback 1: Check user's lastContextId
+      if (req.auth.user?.lastContextId) {
+        const lastTU = await TenantUser.findOne({
+          _id: req.auth.user.lastContextId,
+          userId: req.auth.userId,
+          status: 'active',
+        });
+        if (lastTU) {
+          activeTenantUserId = lastTU._id;
+        }
+      }
+
+      // Auto-fallback 2: Automatically select user's first active tenant profile
+      if (!activeTenantUserId) {
+        const firstTU = await TenantUser.findOne({
+          userId: req.auth.userId,
+          status: 'active',
+        });
+        if (firstTU) {
+          activeTenantUserId = firstTU._id;
+        }
+      }
+
+      // Persist to session and req.auth so subsequent requests have it
+      if (activeTenantUserId) {
+        req.auth.activeTenantUserId = activeTenantUserId;
+        if (req.auth.session) {
+          req.auth.session.activeTenantUserId = activeTenantUserId;
+          req.auth.session.save().catch(() => {});
+        }
+      }
+    }
+
     if (!activeTenantUserId) {
       throw new AppError(
         ERROR_CODES.MEMBERSHIP_INACTIVE,
@@ -26,7 +60,6 @@ export async function requireTenant(req, res, next) {
     const tenantUser = await TenantUser.findOne({
       _id: activeTenantUserId,
       userId: req.auth.userId,
-      status: 'active',
     });
 
     if (!tenantUser) {
@@ -37,10 +70,26 @@ export async function requireTenant(req, res, next) {
       );
     }
 
+    if (tenantUser.status !== 'active') {
+      throw new AppError(
+        ERROR_CODES.SUBSCRIBER_INACTIVE,
+        'Your access to this workspace is currently inactive. Please contact your administrator.',
+        403
+      );
+    }
+
     // Load Tenant
     const tenant = await Tenant.findById(tenantUser.tenantId);
     if (!tenant) {
       throw new AppError(ERROR_CODES.NOT_FOUND, 'Associated tenant not found', 404);
+    }
+
+    if (tenant.status === 'deactivated' || tenant.status === 'suspended') {
+      throw new AppError(
+        ERROR_CODES.TENANT_DEACTIVATED,
+        'This workspace has been deactivated by the platform administrator.',
+        403
+      );
     }
 
     // Load Membership and verify isActive()

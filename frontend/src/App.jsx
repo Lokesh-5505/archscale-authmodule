@@ -14,6 +14,7 @@ import { LinkProblemPage } from './pages/LinkProblemPage.jsx';
 import { MembershipEndedPage } from './pages/MembershipEndedPage.jsx';
 import { SecurityPage } from './pages/SecurityPage.jsx';
 import { AdminInvitationsPage } from './pages/AdminInvitationsPage.jsx';
+import { TenantTeamPage } from './pages/TenantTeamPage.jsx';
 
 function RootRedirect() {
   const { user, contexts, isAuthenticated, isLoading } = useAuth();
@@ -32,10 +33,6 @@ function RootRedirect() {
 
   if (user?.platformRole === 'super_admin') {
     return <Navigate to="/admin/invitations" replace />;
-  }
-
-  if (user?.platformRole === 'admin') {
-    return <Navigate to="/security" replace />;
   }
 
   // Subscriber context routing per TDD §5.6
@@ -83,6 +80,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <SecurityPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/workspace/team"
+            element={
+              <ProtectedRoute>
+                <TenantTeamPage />
               </ProtectedRoute>
             }
           />

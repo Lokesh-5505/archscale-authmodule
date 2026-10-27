@@ -28,6 +28,8 @@ class AdminService {
   async createInvitation({
     email,
     tenantType,
+    role,
+    tenantId,
     organizationName,
     membershipStartsAt,
     membershipEndsAt,
@@ -72,12 +74,33 @@ class AdminService {
     const expiresAt = new Date(Date.now() + TOKEN_EXPIRY.INVITATION_HOURS * 60 * 60 * 1000);
     const inviteLink = `${baseUrl}/accept-invite?token=${rawToken}`;
 
+    // Determine normalized role
+    const effectiveRole = role || (tenantType === 'studio_owner' ? 'admin' : tenantType === 'project_owner' ? 'manager' : tenantType === 'vendor_owner' ? 'executive' : tenantType || 'admin');
+
+    // Enforce strictly one admin per tenant when inviting to an existing tenant
+    if (tenantId && (effectiveRole === 'admin' || tenantType === 'admin' || tenantType === 'studio_owner')) {
+      const existingAdmin = await TenantUser.findOne({
+        tenantId,
+        role: { $in: ['admin', 'owner', 'studio_owner'] },
+        status: 'active',
+      });
+      if (existingAdmin) {
+        throw new AppError(
+          ERROR_CODES.CONFLICT,
+          'This tenant workspace already has an active Administrator. Each workspace can only have one Admin.',
+          409
+        );
+      }
+    }
+
     // 4. Create Invitation
     const invitation = await Invitation.create({
       email: normalizedEmail,
       tokenHash,
       inviteLink,
-      tenantType: tenantType || 'studio_owner',
+      tenantType: tenantType || effectiveRole,
+      role: effectiveRole,
+      tenantId: tenantId || null,
       organizationName: organizationName || prefill.organizationName || '',
       membershipStartsAt: membershipStartsAt ? new Date(membershipStartsAt) : new Date(),
       membershipEndsAt: new Date(membershipEndsAt),
@@ -543,6 +566,233 @@ class AdminService {
         status: membership.status,
         expiresAt: membership.expiresAt || membership.endsAt,
         isActive: membership.isActive(),
+      },
+    };
+  }
+
+  /**
+   * List all tenants across the platform (Super Admin)
+   */
+  async listAllTenants({ page = 1, limit = 20, status, search }) {
+    const query = {};
+    if (status) query.status = status;
+    if (search) {
+      query.name = { $regex: search, $options: 'i' };
+    }
+
+    const skip = (Math.max(1, page) - 1) * limit;
+
+    const [tenants, total] = await Promise.all([
+      Tenant.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('organizationId', 'name status')
+        .populate('deactivatedBy', 'fullName email')
+        .lean(),
+      Tenant.countDocuments(query),
+    ]);
+
+    // Enhance each tenant with subscriber count and admin details
+    const formatted = await Promise.all(
+      tenants.map(async (t) => {
+        const [subscriberCount, adminTU] = await Promise.all([
+          TenantUser.countDocuments({ tenantId: t._id }),
+          TenantUser.findOne({
+            tenantId: t._id,
+            role: { $in: ['admin', 'owner', 'studio_owner'] },
+          })
+            .populate('userId', 'fullName email userId')
+            .lean(),
+        ]);
+
+        return {
+          id: t._id,
+          name: t.name,
+          organization: t.organizationId ? { id: t.organizationId._id, name: t.organizationId.name } : null,
+          status: t.status,
+          deactivatedAt: t.deactivatedAt,
+          deactivatedBy: t.deactivatedBy ? { fullName: t.deactivatedBy.fullName, email: t.deactivatedBy.email } : null,
+          statusReason: t.statusReason || '',
+          subscriberCount,
+          admin: adminTU?.userId
+            ? {
+                fullName: adminTU.userId.fullName,
+                email: adminTU.userId.email,
+                userId: adminTU.userId.userId,
+              }
+            : null,
+          createdAt: t.createdAt,
+        };
+      })
+    );
+
+    return {
+      tenants: formatted,
+      pagination: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
+   * Activate or Deactivate any Tenant (Super Admin)
+   */
+  async updateTenantStatus({ tenantId, status, reason = '', updatedBy }) {
+    const tenant = await Tenant.findById(tenantId);
+    if (!tenant) {
+      throw new AppError(ERROR_CODES.NOT_FOUND, 'Tenant workspace not found', 404);
+    }
+
+    if (status !== 'active' && status !== 'deactivated') {
+      throw new AppError(ERROR_CODES.VALIDATION_FAILED, 'Invalid status. Must be active or deactivated.', 400);
+    }
+
+    tenant.status = status;
+    if (status === 'deactivated') {
+      tenant.deactivatedAt = new Date();
+      tenant.deactivatedBy = updatedBy;
+      tenant.statusReason = reason;
+    } else {
+      tenant.deactivatedAt = null;
+      tenant.deactivatedBy = null;
+      tenant.statusReason = '';
+    }
+
+    await tenant.save();
+
+    await AuditEvent.create({
+      actorUserId: updatedBy,
+      tenantId: tenant._id,
+      organizationId: tenant.organizationId,
+      action: status === 'active' ? 'tenant_activated' : 'tenant_deactivated',
+      result: 'success',
+      metadata: { tenantId: tenant._id, status, reason },
+    });
+
+    return {
+      message: `Tenant workspace successfully ${status === 'active' ? 'activated' : 'deactivated'}.`,
+      tenant: {
+        id: tenant._id,
+        name: tenant.name,
+        status: tenant.status,
+        deactivatedAt: tenant.deactivatedAt,
+        statusReason: tenant.statusReason,
+      },
+    };
+  }
+
+  /**
+   * List subscribers of a specific tenant (Super Admin)
+   */
+  async listTenantSubscribers({ tenantId, page = 1, limit = 50 }) {
+    const tenant = await Tenant.findById(tenantId);
+    if (!tenant) {
+      throw new AppError(ERROR_CODES.NOT_FOUND, 'Tenant workspace not found', 404);
+    }
+
+    const skip = (Math.max(1, page) - 1) * limit;
+
+    const [subscribers, total] = await Promise.all([
+      TenantUser.find({ tenantId })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('userId', 'fullName email userId status initials')
+        .populate('deactivatedBy', 'fullName email')
+        .lean(),
+      TenantUser.countDocuments({ tenantId }),
+    ]);
+
+    const formatted = subscribers.map((tu) => {
+      let role = tu.role || 'executive';
+      if (role === 'owner' || role === 'studio_owner') role = 'admin';
+      if (role === 'project_owner') role = 'manager';
+      if (role === 'vendor_owner' || role === 'member') role = 'executive';
+
+      return {
+        id: tu._id,
+        user: tu.userId
+          ? {
+              id: tu.userId._id,
+              fullName: tu.userId.fullName,
+              email: tu.userId.email,
+              userId: tu.userId.userId,
+              status: tu.userId.status,
+              initials: tu.userId.initials,
+            }
+          : null,
+        role,
+        rawRole: tu.role,
+        status: tu.status,
+        deactivatedAt: tu.deactivatedAt,
+        deactivatedBy: tu.deactivatedBy ? { fullName: tu.deactivatedBy.fullName, email: tu.deactivatedBy.email } : null,
+        deactivationReason: tu.deactivationReason || '',
+        createdAt: tu.createdAt,
+      };
+    });
+
+    return {
+      tenant: {
+        id: tenant._id,
+        name: tenant.name,
+        status: tenant.status,
+      },
+      subscribers: formatted,
+      pagination: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
+   * Activate or Deactivate any Subscriber in any Tenant (Super Admin)
+   */
+  async updateSubscriberStatus({ subscriberId, status, reason = '', updatedBy }) {
+    const tenantUser = await TenantUser.findById(subscriberId).populate('tenantId');
+    if (!tenantUser) {
+      throw new AppError(ERROR_CODES.NOT_FOUND, 'Subscriber record not found', 404);
+    }
+
+    if (status !== 'active' && status !== 'inactive') {
+      throw new AppError(ERROR_CODES.VALIDATION_FAILED, 'Invalid status. Must be active or inactive.', 400);
+    }
+
+    tenantUser.status = status;
+    if (status === 'inactive') {
+      tenantUser.deactivatedAt = new Date();
+      tenantUser.deactivatedBy = updatedBy;
+      tenantUser.deactivationReason = reason;
+    } else {
+      tenantUser.deactivatedAt = null;
+      tenantUser.deactivatedBy = null;
+      tenantUser.deactivationReason = '';
+    }
+
+    await tenantUser.save();
+
+    await AuditEvent.create({
+      actorUserId: updatedBy,
+      targetUserId: tenantUser.userId,
+      tenantId: tenantUser.tenantId?._id,
+      action: status === 'active' ? 'subscriber_activated_by_superadmin' : 'subscriber_deactivated_by_superadmin',
+      result: 'success',
+      metadata: { subscriberId: tenantUser._id, status, reason },
+    });
+
+    return {
+      message: `Subscriber successfully ${status === 'active' ? 'activated' : 'deactivated'}.`,
+      subscriber: {
+        id: tenantUser._id,
+        status: tenantUser.status,
+        deactivatedAt: tenantUser.deactivatedAt,
+        deactivationReason: tenantUser.deactivationReason,
       },
     };
   }

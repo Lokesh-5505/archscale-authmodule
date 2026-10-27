@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   apiClient,
   setAccessToken,
@@ -6,9 +6,12 @@ import {
   getStoredRefreshToken,
   setStoredRefreshToken,
 } from '../api/client.js';
+import { AuthContext } from './AuthContext.js';
+export { AuthContext };
 
-export const AuthContext = createContext(null);
+let authInitPromise = null;
 
+// Initial session restoration from HttpOnly cookie or fallback token on page load
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [contexts, setContexts] = useState([]);
@@ -54,14 +57,31 @@ export function AuthProvider({ children }) {
 
   // Initial session restoration from HttpOnly cookie or fallback token on page load
   useEffect(() => {
-    let isMounted = true;
+    let cancelled = false;
 
     async function initializeAuth() {
+      const fallbackToken = getStoredRefreshToken();
+      if (!fallbackToken) {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+        return;
+      }
+
       try {
-        const fallbackToken = getStoredRefreshToken();
-        const res = await apiClient.post('/auth/refresh', {
-          refreshToken: fallbackToken,
-        });
+        if (!authInitPromise) {
+          authInitPromise = apiClient
+            .post('/auth/refresh', { refreshToken: fallbackToken })
+            .finally(() => {
+              setTimeout(() => {
+                authInitPromise = null;
+              }, 1500);
+            });
+        }
+
+        const res = await authInitPromise;
+
+        if (cancelled) return;
 
         if (res.data?.accessToken) {
           setAccessToken(res.data.accessToken);
@@ -74,14 +94,13 @@ export function AuthProvider({ children }) {
           }
         }
       } catch {
-        // No active session cookie or expired
-        setAccessToken(null);
-        setStoredRefreshToken(null);
-        if (isMounted) {
+        if (!cancelled) {
+          setAccessToken(null);
+          setStoredRefreshToken(null);
           setUser(null);
         }
       } finally {
-        if (isMounted) {
+        if (!cancelled) {
           setIsLoading(false);
         }
       }
@@ -89,7 +108,7 @@ export function AuthProvider({ children }) {
 
     initializeAuth();
     return () => {
-      isMounted = false;
+      cancelled = true;
     };
   }, [fetchMe, fetchContexts]);
 
@@ -158,19 +177,22 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const value = {
-    user,
-    contexts,
-    activeContext,
-    isLoading,
-    isAuthenticated: !!user,
-    login,
-    logout,
-    logoutAll,
-    switchContext,
-    refreshContexts: fetchContexts,
-    refreshMe: fetchMe,
-  };
+  const value = useMemo(
+    () => ({
+      user,
+      contexts,
+      activeContext,
+      isLoading,
+      isAuthenticated: !!user,
+      login,
+      logout,
+      logoutAll,
+      switchContext,
+      refreshContexts: fetchContexts,
+      refreshMe: fetchMe,
+    }),
+    [user, contexts, activeContext, isLoading, fetchContexts, fetchMe]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -5,6 +5,7 @@ import cookieParser from 'cookie-parser';
 import { env } from './config/env.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import adminRoutes from './modules/admin/admin.routes.js';
+import tenantRoutes from './modules/tenant/tenant.routes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { AppError } from './middleware/AppError.js';
 import { ERROR_CODES } from './config/constants.js';
@@ -38,7 +39,7 @@ app.use(
       return callback(new Error(`CORS origin not allowed: ${origin}`));
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-ArchScale-Client'],
   })
 );
@@ -61,6 +62,7 @@ app.get('/health', (req, res) => {
 // Mount modules under /api
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/tenant', tenantRoutes);
 
 // Catch 404 for undefined routes
 app.use((req, res, next) => {

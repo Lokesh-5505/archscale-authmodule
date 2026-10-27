@@ -21,8 +21,18 @@ const invitationSchema = new mongoose.Schema(
     },
     tenantType: {
       type: String,
-      required: true,
-      enum: Object.values(TENANT_TYPES),
+      default: 'admin',
+    },
+    tenantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Tenant',
+      default: null,
+      index: true,
+    },
+    role: {
+      type: String,
+      enum: ['admin', 'manager', 'executive', 'owner', 'member', 'studio_owner', 'project_owner', 'vendor_owner'],
+      default: 'admin',
     },
     organizationName: {
       type: String,

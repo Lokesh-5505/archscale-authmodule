@@ -125,3 +125,70 @@ export async function updateMembershipHandler(req, res, next) {
     next(err);
   }
 }
+
+export async function listAllTenantsHandler(req, res, next) {
+  try {
+    const { page, limit, status, search } = req.query;
+    const result = await adminService.listAllTenants({
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+      status,
+      search,
+    });
+
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateTenantStatusHandler(req, res, next) {
+  try {
+    const { tenantId } = req.params;
+    const { status, reason } = req.body;
+    const result = await adminService.updateTenantStatus({
+      tenantId,
+      status,
+      reason,
+      updatedBy: req.auth.userId,
+    });
+
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listTenantSubscribersHandler(req, res, next) {
+  try {
+    const { tenantId } = req.params;
+    const { page, limit } = req.query;
+    const result = await adminService.listTenantSubscribers({
+      tenantId,
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 50,
+    });
+
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateSubscriberStatusHandler(req, res, next) {
+  try {
+    const { subscriberId } = req.params;
+    const { status, reason } = req.body;
+    const result = await adminService.updateSubscriberStatus({
+      subscriberId,
+      status,
+      reason,
+      updatedBy: req.auth.userId,
+    });
+
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+

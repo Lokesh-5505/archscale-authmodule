@@ -44,7 +44,19 @@ export async function authenticate(req, res, next) {
     }
 
     // Lookup session in our application database (latest record)
-    const session = await Session.findOne({ supabaseSessionId }).sort({ createdAt: -1 });
+    let session = await Session.findOne({ supabaseSessionId }).sort({ createdAt: -1 });
+    if (!session && payload.sub) {
+      // Fallback: look up user by supabase user ID and check for their active session
+      const user = await User.findOne({ supabaseUserId: payload.sub });
+      if (user) {
+        session = await Session.findOne({ userId: user._id, revokedAt: null }).sort({ updatedAt: -1 });
+        if (session) {
+          // Re-sync session with current supabaseSessionId
+          session.supabaseSessionId = supabaseSessionId;
+          session.save().catch(() => {});
+        }
+      }
+    }
     if (!session) {
       throw new AppError(ERROR_CODES.SESSION_REVOKED, 'Session not recognized or revoked', 401);
     }

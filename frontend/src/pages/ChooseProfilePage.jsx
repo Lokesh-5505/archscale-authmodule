@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthLayout } from '../components/AuthLayout.jsx';
 import { Avatar } from '../components/Avatar.jsx';
@@ -15,18 +15,19 @@ export function ChooseProfilePage() {
   const [errorMessage, setErrorMessage] = useState('');
   const navigate = useNavigate();
 
+  const fetchedRef = useRef(false);
+
   useEffect(() => {
-    // Redirect admins away from profile selector
+    // Redirect super admin away from profile selector
     if (user?.platformRole === 'super_admin') {
       navigate('/admin/invitations', { replace: true });
       return;
     }
-    if (user?.platformRole === 'admin') {
-      navigate('/security', { replace: true });
-      return;
-    }
 
-    refreshContexts();
+    if (!fetchedRef.current) {
+      fetchedRef.current = true;
+      refreshContexts();
+    }
   }, [user, navigate, refreshContexts]);
 
   // Auto-redirect per TDD §5.6 & §18.4:
