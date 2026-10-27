@@ -1,0 +1,29 @@
+.security-section {
+  margin-bottom: 36px;
+}
+
+.security-section:last-child {
+  margin-bottom: 0;
+}
+
+.security-section-header {
+  margin-bottom: 18px;
+}
+
+.security-section-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.security-section-desc {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.security-section-divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 32px 0;
+}

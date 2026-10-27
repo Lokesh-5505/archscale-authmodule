@@ -1,0 +1,141 @@
+### ArchScale Auth API - Local Testing Collection (Aligned with Technical Specification §10)
+
+@baseUrl = http://localhost:5000/api
+@superAdminToken = your_super_admin_jwt_token_here
+@adminToken = your_admin_jwt_token_here
+@subscriberToken = your_subscriber_jwt_token_here
+
+### 1. Healthcheck (for Railway / Monitoring)
+GET http://localhost:5000/health
+
+### 2a. Login with Username - Public
+# @name loginWithUsername
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "username": "superadmin",
+  "password": "CorrectPassword123!",
+  "rememberMe": true
+}
+
+### 2b. Login with Email - Public
+# @name loginWithEmail
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "superadmin@archscale.in",
+  "password": "CorrectPassword123!",
+  "rememberMe": true
+}
+
+### 2c. Login with User ID (legacy fallback) - Public
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "id": "superadmin",
+  "password": "CorrectPassword123!",
+  "rememberMe": true
+}
+
+### 3. Refresh Access Token (Cookie sent automatically by browser)
+POST {{baseUrl}}/auth/refresh
+X-Requested-With: XMLHttpRequest
+
+### 4. Forgot Password - Public
+POST {{baseUrl}}/auth/forgot-password
+Content-Type: application/json
+
+{
+  "id": "superadmin@archscale.in"
+}
+
+### 5. Reset Password - Public
+POST {{baseUrl}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "token_from_email_or_console",
+  "newPassword": "NewStrongPassword456!"
+}
+
+### 6. Get Current User & Permitted Context - Authenticated
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{subscriberToken}}
+
+### 7. Super Admin: Create Registration Invitation - Super Admin
+POST {{baseUrl}}/admin/invitations
+Authorization: Bearer {{superAdminToken}}
+Content-Type: application/json
+
+{
+  "email": "lead_architect@studioexample.com",
+  "tenantType": "studio_owner",
+  "organizationName": "Metropolis Architecture Group",
+  "membershipEndsAt": "2027-12-31T23:59:59Z",
+  "mode": "invite"
+}
+
+### 8. Super Admin: List Invitations - Super Admin
+GET {{baseUrl}}/admin/invitations
+Authorization: Bearer {{superAdminToken}}
+
+### 9. Super Admin: Revoke Pending Invitation - Super Admin
+POST {{baseUrl}}/admin/invitations/specific_invitation_id/revoke
+Authorization: Bearer {{superAdminToken}}
+
+### 10. Super Admin: Manual User Registration per §5.3 - Super Admin
+POST {{baseUrl}}/admin/users
+Authorization: Bearer {{superAdminToken}}
+Content-Type: application/json
+
+{
+  "email": "contractor@vendorexample.com",
+  "userId": "contractor_mike",
+  "fullName": "Mike Vance",
+  "role": "MEMBER"
+}
+
+### 11. Super Admin: Organization & Tenant Provisioning per §4.3 - Super Admin
+POST {{baseUrl}}/admin/organizations
+Authorization: Bearer {{superAdminToken}}
+Content-Type: application/json
+
+{
+  "name": "Acme Engineering & Design",
+  "tenantName": "Acme London Studio",
+  "tenantType": "studio_owner"
+}
+
+### 12. List Active User Device Sessions - Authenticated
+GET {{baseUrl}}/auth/sessions
+Authorization: Bearer {{subscriberToken}}
+
+### 13. Revoke Individual Device Session - Authenticated
+DELETE {{baseUrl}}/auth/sessions/specific_session_id_here
+Authorization: Bearer {{subscriberToken}}
+
+### 14. Logout From All Devices - Authenticated
+POST {{baseUrl}}/auth/logout-all
+Authorization: Bearer {{subscriberToken}}
+X-Requested-With: XMLHttpRequest
+
+### 15. List Organization Memberships - Super Admin / Admin
+GET {{baseUrl}}/admin/memberships
+Authorization: Bearer {{superAdminToken}}
+
+### 16. Update / Revoke Membership Status - Super Admin / Admin
+PATCH {{baseUrl}}/admin/memberships/specific_membership_id_here
+Authorization: Bearer {{superAdminToken}}
+Content-Type: application/json
+
+{
+  "status": "revoked"
+}
+
+### 17. Logout (Current Device) - Authenticated
+POST {{baseUrl}}/auth/logout
+Authorization: Bearer {{subscriberToken}}
+X-Requested-With: XMLHttpRequest

@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: archscale-auth-backend
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node src/server.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: COOKIE_SECRET
+        sync: false
+      - key: OTP_ENCRYPTION_KEY
+        sync: false
+      - key: MAIL_PROVIDER_KEY
+        sync: false
+      - key: MAIL_FROM
+        value: "ArchScale Auth <onboarding@resend.dev>"

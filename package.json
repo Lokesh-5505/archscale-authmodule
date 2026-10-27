@@ -1,0 +1,15 @@
+{
+  "name": "archscale-authmodule-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ArchScale Authentication & Session Management Monorepo",
+  "scripts": {
+    "dev": "npm run dev:all",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:all": "npx -y concurrently -k -n \"BACKEND,FRONTEND\" -c \"cyan,magenta\" \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "build": "npm run build --prefix frontend",
+    "test": "npm test --prefix backend",
+    "seed": "npm run seed --prefix backend"
+  }
+}

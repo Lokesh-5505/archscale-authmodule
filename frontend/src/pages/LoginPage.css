@@ -1,0 +1,32 @@
+.login-help-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+  margin-bottom: 24px;
+}
+
+.forgot-password-link {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  transition: color var(--transition-fast);
+}
+
+.forgot-password-link:hover {
+  color: var(--accent-secondary);
+}
+
+.invite-only-box {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-subtle);
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.invite-only-box a {
+  color: var(--accent-secondary);
+  font-weight: 500;
+}
