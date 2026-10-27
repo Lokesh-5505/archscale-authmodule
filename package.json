@@ -3,12 +3,19 @@
   "version": "1.0.0",
   "private": true,
   "description": "ArchScale Authentication & Session Management Monorepo",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
   "scripts": {
     "dev": "npm run dev:all",
     "dev:frontend": "npm run dev --prefix frontend",
     "dev:backend": "npm run dev --prefix backend",
     "dev:all": "npx -y concurrently -k -n \"BACKEND,FRONTEND\" -c \"cyan,magenta\" \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
-    "build": "npm run build --prefix frontend",
+    "build": "npm --prefix frontend install --include=dev && npm run build --prefix frontend",
+    "build:frontend": "npm --prefix frontend install --include=dev && npm run build --prefix frontend",
+    "build:backend": "npm --prefix backend install",
+    "start": "npm start --prefix backend",
     "test": "npm test --prefix backend",
     "seed": "npm run seed --prefix backend"
   }
